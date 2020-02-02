@@ -1,33 +1,17 @@
 mod rect;
+mod game_map;
+mod components;
+mod visibility_system;
 
-use rltk::{Console, GameState, Rltk, RGB, VirtualKeyCode, RandomNumberGenerator};
+use rltk::{Console, GameState, Rltk, RGB, VirtualKeyCode, Point, to_cp437};
 use specs::prelude::*;
 use std::cmp::{max, min};
-use rect::Rect;
+use game_map::{GameMap, TileType};
+use components::*;
+use visibility_system::VisibilitySystem;
 
 #[macro_use]
 extern crate specs_derive;
-
-#[derive(Component, Debug)]
-struct Position {
-    x: i32,
-    y: i32
-}
-
-#[derive(Component)]
-struct Renderable {
-    glyph: u8,
-    fg: RGB,
-    bg: RGB
-}
-
-#[derive(PartialEq, Copy, Clone)]
-enum TileType {
-    Wall, Floor
-}
-
-#[derive(Component, Debug)]
-struct Player;
 
 struct State {
     ecs: World
@@ -35,6 +19,10 @@ struct State {
 
 impl State {
     fn run_systems(&mut self) {
+        let mut vis = VisibilitySystem;
+
+        vis.run_now(&self.ecs);
+
         // any systems go here, but we dont have any yet
         self.ecs.maintain();
     }
@@ -48,7 +36,7 @@ impl GameState for State {
         self.run_systems();
 
         // first render map
-        self.ecs.fetch::<GameMap>().draw_into(ctx);
+        draw_map(&self.ecs, ctx);
 
         // render anything else that can be rendered
         let positions = self.ecs.read_storage::<Position>();
@@ -56,96 +44,6 @@ impl GameState for State {
 
         for (pos, render) in (&positions, &renderables).join() {
             ctx.set(pos.x, pos.y, render.fg, render.bg, render.glyph);
-        }
-    }
-}
-
-fn draw_room(room: &Rect, tiles: &mut [TileType]) {
-    for y in room.y1 + 1 ..= room.y2 {
-        for x in room.x1 + 1 ..= room.x2 {
-            tiles[xy_idx(x, y)] = TileType::Floor;
-        }
-    }
-}
-
-fn draw_horizontal_tunnel(x1: i32, x2: i32, y: i32, tiles: &mut [TileType]) {
-    let minx = min(x1, x2);
-    let maxx = max(x1, x2);
-    draw_room(&Rect::new(minx, y, maxx - minx, 1), tiles);
-}
-
-fn draw_vertical_tunnel(y1: i32, y2: i32, x: i32, tiles: &mut [TileType]) {
-    let miny = min(y1, y2);
-    let maxy = max(y1, y2);
-    draw_room(&Rect::new(x, miny, 1, maxy - miny), tiles);
-}
-
-struct GameMap {
-    tiles: Vec<TileType>,
-    rooms: Vec<Rect>,
-}
-
-impl GameMap {
-    pub fn new() -> GameMap {
-        let mut tiles = vec![TileType::Wall; 80 * 50];
-
-        let mut rooms = Vec::<Rect>::new();
-        const MAX_ROOMS: i32 = 30;
-        const MIN_SIZE: i32 = 6;
-        const MAX_SIZE: i32 = 10;
-
-        let mut rng = RandomNumberGenerator::new();
-
-        'outer: for _ in 0..MAX_ROOMS {
-            let w = rng.range(MIN_SIZE, MAX_SIZE);
-            let h = rng.range(MIN_SIZE, MAX_SIZE);
-            let x = rng.roll_dice(1, 80 - w - 1) - 1;
-            let y = rng.roll_dice(1, 50 - h - 1) - 1;
-            let new_room = Rect::new(x, y, w, h);
-
-            for room in rooms.iter() {
-                if new_room.intersect(room) {
-                    continue 'outer;
-                }
-            }
-
-            draw_room(&new_room, &mut tiles);
-            if !rooms.is_empty() {
-                let (new_x, new_y) = new_room.center();
-                let (prev_x, prev_y) = rooms[rooms.len() - 1].center();
-                if rng.roll_dice(1, 2) == 1 {
-                    draw_horizontal_tunnel(prev_x, new_x, prev_y, &mut tiles);
-                    draw_vertical_tunnel(prev_y, new_y, new_x, &mut tiles);
-                } else {
-                    draw_vertical_tunnel(prev_y, new_y, prev_x, &mut tiles);
-                    draw_horizontal_tunnel(prev_x, new_x, new_y, &mut tiles);
-                }
-            }
-
-            rooms.push(new_room);
-        }
-
-        GameMap { tiles, rooms }
-    }
-
-    fn draw_into(&self, ctx: &mut Rltk) {
-        let mut y = 0;
-        let mut x = 0;
-        for tile in self.tiles.iter() {
-            match tile {
-                TileType::Floor => {
-                    ctx.set(x, y, RGB::from_f32(0.5, 0.5, 0.5), RGB::from_f32(0.0, 0.0, 0.0), rltk::to_cp437('.'));
-                },
-                TileType::Wall => {
-                    ctx.set(x, y, RGB::from_f32(0.0, 1.0, 0.0), RGB::from_f32(0.0, 0.0, 0.0), rltk::to_cp437('#'));
-                }
-            }
-
-            x += 1;
-            if x > 79 {
-                x = 0;
-                y += 1;
-            }
         }
     }
 }
@@ -161,8 +59,40 @@ fn try_move_player(ecs: &mut World, delta_x: i32, delta_y: i32) {
             x: min(79, max(0, pos.x + delta_x)),
             y: min(49, max(0, pos.y + delta_y))
         };
-        if map.tiles[xy_idx(new_pos.x, new_pos.y)] != TileType::Wall {
+        if map.tiles[map.xy_idx(new_pos.x, new_pos.y)] != TileType::Wall {
             *pos = new_pos
+        }
+    }
+}
+
+
+pub fn draw_map(ecs: &World, ctx: &mut Rltk) {
+    let mut viewsheds = ecs.write_storage::<Viewshed>();
+    let mut players = ecs.write_storage::<Player>();
+    let map = ecs.fetch::<GameMap>();
+
+    for (_player, viewshed) in (&mut players, &mut viewsheds).join() {
+        let mut y = 0;
+        let mut x = 0;
+        for tile in map.tiles.iter() {
+            let pt = Point::new(x, y);
+
+            if viewshed.visible_tiles.contains(&pt) {
+                match tile {
+                    TileType::Floor => {
+                        ctx.set(x, y, RGB::from_f32(0.5, 0.5, 0.5), RGB::from_f32(0.0, 0.0, 0.0), to_cp437('.'));
+                    },
+                    TileType::Wall => {
+                        ctx.set(x, y, RGB::from_f32(0.0, 1.0, 0.0), RGB::from_f32(0.0, 0.0, 0.0), to_cp437('#'));
+                    }
+                }
+            }
+
+            x += 1;
+            if x > 79 {
+                x = 0;
+                y += 1;
+            }
         }
     }
 }
@@ -188,23 +118,27 @@ fn handle_player_input(gs: &mut State, ctx: &mut Rltk) {
     }
 }
 
-pub fn xy_idx(x: i32, y: i32) -> usize {
-    (y as usize * 80) + x as usize
-}
-
 
 fn main() {
+    use rltk::RltkBuilder;
+
+    let context = RltkBuilder::simple80x50()
+        .with_title("Hello bitches")
+        .build();
+
     let mut gs = State {
         ecs: World::new()
     };
 
-    let map = GameMap::new();
+    let mut map = GameMap::new(80, 50);
+    map.populate_with_random_rooms();
     let (player_x, player_y) = map.rooms[0].center();
     gs.ecs.insert(map);
 
     gs.ecs.register::<Position>();
     gs.ecs.register::<Renderable>();
     gs.ecs.register::<Player>();
+    gs.ecs.register::<Viewshed>();
 
     gs.ecs
         .create_entity()
@@ -215,8 +149,8 @@ fn main() {
             fg: RGB::named(rltk::YELLOW),
             bg: RGB::named(rltk::YELLOW)
         })
+        .with(Viewshed { visible_tiles: Vec::new(), range: 8 })
         .build();
 
-    let context = Rltk::init_simple8x8(80, 50, "Hello bitches", "resources");
     rltk::main_loop(context, gs);
 }
