@@ -10,6 +10,7 @@ pub enum TileType {
 
 pub struct GameMap {
     pub tiles: Vec<TileType>,
+    pub revealed_tiles: Vec<bool>,
     pub rooms: Vec<Rect>,
     pub width: i32,
     pub height: i32,
@@ -39,9 +40,10 @@ impl GameMap {
 
     pub fn new(width: i32, height: i32) -> GameMap {
         let tiles = vec![TileType::Wall; (width * height) as usize];
+        let revealed_tiles = vec![false; (width * height) as usize];
         let rooms = Vec::<Rect>::new();
 
-        GameMap { tiles, rooms, width, height }
+        GameMap { tiles, revealed_tiles, rooms, width, height }
     }
 
     pub fn xy_idx(&self, x: i32, y: i32) -> usize {

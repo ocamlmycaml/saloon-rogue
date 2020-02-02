@@ -3,7 +3,7 @@ mod game_map;
 mod components;
 mod visibility_system;
 
-use rltk::{Console, GameState, Rltk, RGB, VirtualKeyCode, Point, to_cp437};
+use rltk::{Console, GameState, Rltk, RGB, VirtualKeyCode, to_cp437};
 use specs::prelude::*;
 use std::cmp::{max, min};
 use game_map::{GameMap, TileType};
@@ -67,32 +67,26 @@ fn try_move_player(ecs: &mut World, delta_x: i32, delta_y: i32) {
 
 
 pub fn draw_map(ecs: &World, ctx: &mut Rltk) {
-    let mut viewsheds = ecs.write_storage::<Viewshed>();
-    let mut players = ecs.write_storage::<Player>();
     let map = ecs.fetch::<GameMap>();
 
-    for (_player, viewshed) in (&mut players, &mut viewsheds).join() {
-        let mut y = 0;
-        let mut x = 0;
-        for tile in map.tiles.iter() {
-            let pt = Point::new(x, y);
-
-            if viewshed.visible_tiles.contains(&pt) {
-                match tile {
-                    TileType::Floor => {
-                        ctx.set(x, y, RGB::from_f32(0.5, 0.5, 0.5), RGB::from_f32(0.0, 0.0, 0.0), to_cp437('.'));
-                    },
-                    TileType::Wall => {
-                        ctx.set(x, y, RGB::from_f32(0.0, 1.0, 0.0), RGB::from_f32(0.0, 0.0, 0.0), to_cp437('#'));
-                    }
+    let mut y = 0;
+    let mut x = 0;
+    for (idx, tile) in map.tiles.iter().enumerate() {
+        if map.revealed_tiles[idx] {
+            match tile {
+                TileType::Floor => {
+                    ctx.set(x, y, RGB::from_f32(0.5, 0.5, 0.5), RGB::from_f32(0.0, 0.0, 0.0), to_cp437('.'));
+                },
+                TileType::Wall => {
+                    ctx.set(x, y, RGB::from_f32(0.0, 1.0, 0.0), RGB::from_f32(0.0, 0.0, 0.0), to_cp437('#'));
                 }
             }
+        }
 
-            x += 1;
-            if x > 79 {
-                x = 0;
-                y += 1;
-            }
+        x += 1;
+        if x > map.width - 1 {
+            x = 0;
+            y += 1;
         }
     }
 }
