@@ -1,4 +1,5 @@
 use rltk::{Point, RandomNumberGenerator, Algorithm2D, BaseMap};
+use specs::prelude::*;
 use std::cmp::{min, max};
 use crate::rect::Rect;
 
@@ -11,6 +12,9 @@ pub enum TileType {
 pub struct GameMap {
     pub tiles: Vec<TileType>,
     pub revealed_tiles: Vec<bool>,
+    pub visible_tiles: Vec<bool>,
+    pub blocked: Vec<bool>,
+    pub tile_content: Vec<Vec<Entity>>,
     pub rooms: Vec<Rect>,
     pub width: i32,
     pub height: i32,
@@ -39,11 +43,16 @@ impl GameMap {
     }
 
     pub fn new(width: i32, height: i32) -> GameMap {
-        let tiles = vec![TileType::Wall; (width * height) as usize];
-        let revealed_tiles = vec![false; (width * height) as usize];
-        let rooms = Vec::<Rect>::new();
-
-        GameMap { tiles, revealed_tiles, rooms, width, height }
+        GameMap {
+            tiles: vec![TileType::Wall; (width * height) as usize],
+            revealed_tiles: vec![false; (width * height) as usize],
+            visible_tiles: vec![false; (width * height) as usize],
+            blocked: vec![true; (width * height) as usize],
+            tile_content: vec![Vec::<Entity>::new(); (width * height) as usize],
+            rooms: Vec::<Rect>::new(),
+            width,
+            height
+        }
     }
 
     pub fn xy_idx(&self, x: i32, y: i32) -> usize {
@@ -89,6 +98,27 @@ impl GameMap {
 
         self.rooms = rooms;
     }
+
+    pub fn populate_blocked(&mut self) {
+        for (i, &tile) in self.tiles.iter().enumerate() {
+            self.blocked[i] = tile == TileType::Wall;
+        }
+    }
+
+    pub fn clear_content_index(&mut self) {
+        for content in self.tile_content.iter_mut() {
+            content.clear();
+        }
+    }
+
+    fn is_exit_valid(&self, x: i32, y: i32) -> bool {
+        if x < 1 || x > self.width - 1 || y < 1 || y> self.height - 1 {
+            false
+        } else {
+            let idx = self.xy_idx(x, y);
+            !self.blocked[idx]
+        }
+    }
 }
 
 impl Algorithm2D for GameMap {
@@ -100,5 +130,20 @@ impl Algorithm2D for GameMap {
 impl BaseMap for GameMap {
     fn is_opaque(&self, idx: usize) -> bool {
         self.tiles[idx as usize] == TileType::Wall
+    }
+
+    fn get_available_exits(&self, idx: usize) -> Vec<(usize, f32)> {
+        let x = idx as i32 % self.width;
+        let y = idx as i32 / self.width;
+        let w = self.width;
+
+        (-1..=1).flat_map(|dx| (-1..=1).map(move |dy| (dx, dy)))
+            .filter(|&(dx, dy)| dx != 0 || dy != 0)
+            .filter(|&(dx, dy)| self.is_exit_valid(x + dx, y + dy))
+            .map(|(dx, dy)| (
+                (idx as i32 + (w * dy) + dx) as usize,
+                if dx == 0 || dy == 0 { 1.0 } else { 1.45 }
+            ))
+            .collect()
     }
 }
