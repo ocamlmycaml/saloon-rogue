@@ -4,6 +4,11 @@ use std::cmp::{min, max};
 use crate::rect::Rect;
 
 
+const MAPWIDTH: i32 = 80;
+const MAPHEIGHT: i32 = 43;
+const MAPCOUNT: i32 = MAPWIDTH * MAPHEIGHT;
+
+
 #[derive(PartialEq, Copy, Clone)]
 pub enum TileType {
     Wall, Floor
@@ -42,16 +47,17 @@ impl GameMap {
         self.draw_room(&Rect::new(x, miny, 1, maxy - miny));
     }
 
-    pub fn new(width: i32, height: i32) -> GameMap {
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> GameMap {
         GameMap {
-            tiles: vec![TileType::Wall; (width * height) as usize],
-            revealed_tiles: vec![false; (width * height) as usize],
-            visible_tiles: vec![false; (width * height) as usize],
-            blocked: vec![true; (width * height) as usize],
-            tile_content: vec![Vec::<Entity>::new(); (width * height) as usize],
+            tiles: vec![TileType::Wall; MAPCOUNT as usize],
+            revealed_tiles: vec![false; MAPCOUNT as usize],
+            visible_tiles: vec![false; MAPCOUNT as usize],
+            blocked: vec![true; MAPCOUNT as usize],
+            tile_content: vec![Vec::<Entity>::new(); MAPCOUNT as usize],
             rooms: Vec::<Rect>::new(),
-            width,
-            height
+            width: MAPWIDTH,
+            height: MAPHEIGHT
         }
     }
 

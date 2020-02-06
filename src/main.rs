@@ -6,6 +6,8 @@ mod monster_ai_system;
 mod map_ai_system;
 mod melee_combat_system;
 mod damage_system;
+mod gui;
+mod game_log;
 
 use rltk::{
     Point, Console, GameState, Rltk, RGB,
@@ -20,6 +22,7 @@ use monster_ai_system::MonsterAI;
 use map_ai_system::MapIndexingSystem;
 use melee_combat_system::MeleeCombatSystem;
 use damage_system::DamageSystem;
+use game_log::GameLog;
 
 #[macro_use]
 extern crate specs_derive;
@@ -133,6 +136,9 @@ impl GameState for State {
                 ctx.set(pos.x, pos.y, render.fg, render.bg, render.glyph);
             }
         }
+
+        // draw box
+        gui::draw_ui(&self.ecs, ctx);
     }
 }
 
@@ -211,15 +217,16 @@ pub fn draw_map(map: &GameMap, ctx: &mut Rltk) {
 fn main() {
     use rltk::RltkBuilder;
 
-    let context = RltkBuilder::simple80x50()
+    let mut context = RltkBuilder::simple80x50()
         .with_title("Hello bitches")
         .build();
+    context.with_post_scanlines(true);
 
     let mut gs = State {
         ecs: World::new(),
     };
 
-    let mut map = GameMap::new(80, 50);
+    let mut map = GameMap::new();
     map.populate_with_random_rooms();
     let (player_x, player_y) = map.rooms[0].center();
 
@@ -285,6 +292,7 @@ fn main() {
     gs.ecs.insert(Point::new(player_x, player_y));
     gs.ecs.insert(player_entity);
     gs.ecs.insert(RunState::PreRun);
+    gs.ecs.insert(GameLog { entries: vec!["Welcome to the Wild Wild West".to_string()]});
 
     rltk::main_loop(context, gs);
 }
