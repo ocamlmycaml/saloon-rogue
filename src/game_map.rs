@@ -4,9 +4,9 @@ use std::cmp::{min, max};
 use crate::rect::Rect;
 
 
-const MAPWIDTH: i32 = 80;
-const MAPHEIGHT: i32 = 43;
-const MAPCOUNT: i32 = MAPWIDTH * MAPHEIGHT;
+pub const MAPWIDTH: i32 = 80;
+pub const MAPHEIGHT: i32 = 43;
+pub const MAPCOUNT: i32 = MAPWIDTH * MAPHEIGHT;
 
 
 #[derive(PartialEq, Copy, Clone)]
